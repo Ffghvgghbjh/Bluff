@@ -10,7 +10,7 @@
 *{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{margin:0;color:var(--fg);background:radial-gradient(ellipse 70% 38% at 50% 0,var(--lamp),transparent 70%),var(--bg);background-attachment:fixed;font:16px/1.5 "Noto Sans Georgian",system-ui,sans-serif}
 main{max-width:780px;margin:0 auto;padding:14px}
-h1{font:900 clamp(2.8rem,13vw,4.8rem)/1 "Noto Serif Georgian",Georgia,serif;text-align:center;color:var(--gold);margin:.2em 0 0;text-shadow:0 3px 0 var(--sh)}
+h1{font:900 clamp(2.8rem,13vw,4.8rem)/1.35 "Noto Serif Georgian",Georgia,serif;text-align:center;color:var(--gold);margin:.2em 0 0;text-shadow:0 3px 0 var(--sh)}
 main:has(#game:not([hidden])) h1{font-size:2.1rem}
 .sub{text-align:center;color:var(--dim);margin:.2em 0 0;font-style:italic}
 #hero{display:flex;justify-content:center;height:215px;margin:14px 0 20px}
@@ -22,7 +22,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 input,select{font:inherit;border:2px solid var(--line);border-radius:999px;padding:7px 14px;background:var(--card);color:var(--fg);max-width:170px}
 #lp{padding-left:20px}
-#game{background:var(--tb);border:2px solid var(--gold);border-radius:24px;padding:14px;outline:1px solid var(--line);outline-offset:-9px;box-shadow:inset 0 0 50px var(--sh),0 14px 34px var(--sh)}
+#game{background:transparent;border:2px solid var(--gold);border-radius:24px;padding:14px;outline:1px solid var(--line);outline-offset:-9px;box-shadow:inset 0 0 50px var(--sh),0 14px 34px var(--sh)}
 #opp{display:flex;flex-wrap:wrap;gap:10px}
 .pl{border:1.5px solid var(--line);border-radius:14px;padding:8px 12px;flex:1 1 150px;transition:box-shadow .3s,border-color .3s}
 .pl b{font:800 1rem "Noto Serif Georgian",serif}
@@ -32,17 +32,26 @@ input,select{font:inherit;border:2px solid var(--line);border-radius:999px;paddi
 .co i{width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff2b0,#d6a62e 55%,#8a6410);border:1px solid #6b4c0c;margin-right:-7px;box-shadow:1px 0 2px var(--sh)}
 .co em{font-style:normal;margin-left:13px;font-weight:800;color:var(--gold)}
 .cs{display:flex;margin-top:8px;padding-left:2px}
-.cd{position:relative;overflow:hidden;width:62px;height:94px;border-radius:8px;border:2px solid var(--gold);background:var(--card);box-shadow:0 5px 12px var(--sh);transition:transform .2s}
-.cs .cd+.cd{margin-left:-16px}.cs .cd:nth-child(1){transform:rotate(-4deg)}.cs .cd:nth-child(2){transform:rotate(4deg)}
+.cd{position:relative;overflow:hidden;width:var(--cw,44px);height:calc(var(--cw,44px)*1.5);border-radius:8px;border:2px solid var(--gold);background:var(--card);box-shadow:0 5px 12px var(--sh);transition:transform .2s}
+.cs .cd+.cd{margin-left:4px}
 .cd img{width:100%;height:100%;display:block;object-fit:cover}
 .cd.back{font-size:0;background:linear-gradient(45deg,transparent 45%,var(--gold) 46%,var(--gold) 54%,transparent 55%),linear-gradient(-45deg,transparent 45%,var(--gold) 46%,var(--gold) 54%,transparent 55%),var(--acc);background-size:16px 16px}
 .cd.dead{opacity:.5;filter:grayscale(1)}.cd.dead::after{content:'✖';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.4rem;color:#fff;text-shadow:0 0 6px #000}
-#me .cd{width:106px;height:160px}#me .cs .cd+.cd{margin-left:10px}#me .cd,#me .cd:nth-child(n){transform:none}#me .cd:hover:not(.dead){transform:translateY(-8px)}
+.seat.me .cd:hover:not(.dead){transform:translateY(-8px)}
 #act{margin:14px 0;padding:14px;min-height:76px;background:var(--bg);border:2px solid var(--gold);border-radius:16px;box-shadow:inset 0 0 0 4px var(--bg),inset 0 0 0 5px var(--line)}#act p{margin:0 0 10px;font-weight:600}
 #log{max-height:190px;overflow:auto;font-size:.9rem;color:var(--dim);margin-top:12px}
 #log div{border-bottom:1px dashed var(--line);padding:2px 0}#log div:first-child{color:var(--fg);font-weight:600}
 details{margin:14px 0;font-size:.92rem}summary{cursor:pointer;font-weight:700;color:var(--gold)}
 table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}td{border-bottom:1px solid var(--line);padding:5px 8px;vertical-align:top}
+#tbl{position:relative;aspect-ratio:1/1.3;max-height:700px;margin:0 auto}
+#tbl::before{content:'';position:absolute;inset:9% 3% 11%;border-radius:50%;background:radial-gradient(ellipse at 50% 35%,rgba(255,255,255,.08),transparent 65%),var(--tb);border:6px solid var(--gold);box-shadow:inset 0 0 50px var(--sh),0 10px 28px var(--sh)}
+.seat{--cw:clamp(30px,9vw,46px);position:absolute;transform:translate(-50%,-50%);width:clamp(88px,24%,140px);text-align:center;padding:6px 4px 8px;background:var(--bg);z-index:1}
+.seat.me{--cw:clamp(52px,15vw,92px);width:clamp(140px,40%,260px);transform:translate(-50%,-100%)}
+.seat b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seat .cs{justify-content:center;margin-top:6px}.seat .co{margin:2px 0 0 0}
+#ctr{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:44%;text-align:center;font-size:.85rem;line-height:1.35}
+#ctr .ar{font-size:2.6rem;line-height:1;color:var(--gold);opacity:.55}#ctr .lt{font-weight:600;margin:4px 0}#ctr small{color:var(--dim);font-size:.7rem}
+@media(max-width:600px){#tbl{aspect-ratio:1/1.62}.seat{width:clamp(80px,22%,140px)}.seat.me{width:clamp(130px,38%,260px)}#ctr{width:38%;font-size:.76rem;top:47%}#ctr small{display:none}#ctr .ar{font-size:2rem}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body><main>
 <div id="conn" hidden style="background:var(--acc);color:#fff;text-align:center;padding:6px;border-radius:8px;margin-bottom:8px">კავშირი გაწყდა, ვცდილობ თავიდან…</div>
@@ -63,21 +72,24 @@ table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}td{borde
 <p id="lmsg" style="color:var(--acc)"></p>
 </div>
 <div id="game" hidden>
-<div id="opp"></div>
+<div id="tbl"></div>
 <div id="act"></div>
-<div id="me"></div>
 <div id="log"></div>
 </div>
 <details><summary>წესები</summary>
-<p>თითოეულს აქვს 2 დახურული კარტი და 2 მონეტა. სვლაზე აკეთებ ერთ მოქმედებას. შეგიძლია ბლეფი — დაიბრალო კარტი, რომელიც არ გაქვს. ნებისმიერს შეუძლია უთხრას „არ მჯერა“: თუ ტყუილია, მოტყუებული კარტს კარგავს; თუ სიმართლეა, ჩელენჯერი კარგავს კარტს.</p>
+<p><b>მიზანი:</b> დარჩე ბოლო მოთამაშე, რომელსაც ერთი კარტი მაინც აქვს.</p>
+<p>თავიდან ყველას აქვს 2 დახურული კარტი (პერსონაჟი) და 2 მონეტა. შენს სვლაზე ირჩევ ერთ მოქმედებას. პერსონაჟის მოქმედებისთვის შეგიძლია თქვა, რომ ეს პერსონაჟი გაქვს, მაშინაც კი, თუ სინამდვილეში არ გაქვს. ეს არის ბლეფი.</p>
+<p><b>„არ მჯერა“:</b> ნებისმიერ მოთამაშეს შეუძლია შეგამოწმოს. თუ მართლა იცრუე, შენ კარგავ კარტს. თუ სიმართლე თქვი, კარტს კარგავს ის, ვინც შეგამოწმა.</p>
+<p>დაკარგული კარტი ღიად რჩება მაგიდაზე და თამაშში აღარ მონაწილეობს. როცა ორივე კარტს დაკარგავ, თამაშიდან გადიხარ.</p>
 <table>
-<tr><td>მონეტა</td><td>+1 მონეტა (ბლოკი არ ექვემდებარება)</td></tr>
-<tr><td>დახმარება</td><td>+2 მონეტა. ბლოკავს: 👑 დიქტატორი</td></tr>
-<tr><td>გადატრიალება</td><td>7 მონეტა: მოწინააღმდეგე კარგავს კარტს (ვერ დაიბლოკება). 10+ მონეტაზე სავალდებულოა</td></tr>
-<tr><td>👑 დიქტატორი</td><td>იღებს 3 მონეტას. ბლოკავს 2 მონეტის აღებას</td></tr>
-<tr><td>🗡️ ასასინი</td><td>3 მონეტით კლავს კარტს. მის მკვლელობას ბლოკავს 🕶️ მაფია</td></tr>
-<tr><td>💰 ქურდი</td><td>იპარავს 2 მონეტას. მოპარვას ბლოკავს 💰 ქურდი ან 🎩 მაგიკოსი</td></tr>
-<tr><td>🎩 მაგიკოსი</td><td>ცვლის კარტებს: იღებს 2 კარტს დასტიდან და ტოვებს იმდენს, რამდენიც ჰქონდა. ბლოკავს მოპარვას</td></tr>
+<tr><td>🪙 მონეტა</td><td>აიღე 1 მონეტა. ამას ვერავინ დაგიბლოკავს.</td></tr>
+<tr><td>💵 დახმარება</td><td>აიღე 2 მონეტა. დიქტატორს შეუძლია დაგიბლოკოს.</td></tr>
+<tr><td>💥 გადატრიალება</td><td>გადაიხადე 7 მონეტა და აირჩიე მოთამაშე, რომელიც ერთ კარტს დაკარგავს. ვერ დაიბლოკება. თუ 10 ან მეტი მონეტა გაქვს, სავალდებულოა.</td></tr>
+<tr><td>👑 დიქტატორი</td><td>აიღე 3 მონეტა. დიქტატორი ბლოკავს დახმარებას.</td></tr>
+<tr><td>🗡️ ასასინი</td><td>გადაიხადე 3 მონეტა და სამიზნე მოთამაშეს კარტი მოაკვლევინე. შეუძლია დაბლოკოს მაფიამ.</td></tr>
+<tr><td>💰 ქურდი</td><td>მოიპარე 2 მონეტა სხვა მოთამაშისგან. შეუძლია დაბლოკოს ქურდმა ან მაგიკოსმა.</td></tr>
+<tr><td>🎩 მაგიკოსი</td><td>აიღე 2 კარტი დასტიდან, დატოვე იმდენი, რამდენიც გქონდა, დანარჩენი დააბრუნე. ბლოკავს მოპარვას.</td></tr>
+<tr><td>🕶️ მაფია</td><td>ბლოკავს ასასინის მკვლელობას.</td></tr>
 </table></details>
 </main>
 <script>
@@ -110,12 +122,15 @@ if(d.t=='st'){V=d;$('#menu').hidden=true;$('#game').hidden=false;render()}
 if(d.t=='ask'){if(done[d.id]){send({t:'ans',id:d.id,a:done[d.id]});return}if(cur==d.id)return;cur=d.id;
 choose(d.q,d.o.map((l,i)=>({l,v:i,off:d.off[i]})),d.c).then(a=>{done[d.id]=a;cur=0;$('#act').innerHTML='';send({t:'ans',id:d.id,a})})}}
 function cardH(k){if(!k)return'<div class="cd back">?</div>';const[r,d]=k;return`<div class="cd${d?' dead':''}" title="${R[r].n}"><img src="${IMG[r]}" alt="${R[r].n}"></div>`}
-function pH(p,j){const out=p.k.every(k=>k&&k[1]);const co=`<span class="co">${'<i></i>'.repeat(Math.min(p.c,10))}<em>${p.c}</em></span>`;
-return`<div class="pl ${j==V.tn&&!V.o?'cur':''} ${out?'out':''}"><b>${p.n}</b>${co}<div class="cs">${p.k.map(cardH).join('')}</div></div>`}
-function render(){const me=V.p[V.me];$('#opp').innerHTML=V.p.map((p,j)=>j==V.me?'':pH(p,j)).join('');$('#me').innerHTML=pH(me,V.me);
+function seat(p,j){const n=V.p.length,k=(j-V.me+n)%n,a=(90+360*k/n)*Math.PI/180;
+const x=50+36*Math.cos(a),y=k?50+31*Math.sin(a):100,out=p.k.every(c=>c&&c[1]),cur=j==V.tn&&!V.o;
+const co=`<span class="co">${'<i></i>'.repeat(Math.min(p.c,5))}<em>${p.c}</em></span>`;
+return`<div class="pl seat${k?'':' me'}${cur?' cur':''}${out?' out':''}" style="left:${x}%;top:${y}%"><b>${p.n}${k?'':' (შენ)'}</b><div>${co}</div><div class="cs">${p.k.map(cardH).join('')}</div></div>`}
+function render(){const me=V.p[V.me];
+$('#tbl').innerHTML=V.p.map(seat).join('')+`<div id="ctr"><div class="ar">↻</div><div class="lt">${V.l[0]||''}</div><small>სვლა საათის ისრის მიმართულებით</small></div>`;
 $('#log').innerHTML=V.l.map(l=>`<div>${l}</div>`).join('');
 if(V.o)$('#act').innerHTML=`<p>${me.n===V.o?'🏆 გაიმარჯვე!':'🏁 გაიმარჯვა '+V.o}</p><button onclick="SS.removeItem('bl_room');location.href=location.pathname">თავიდან</button>`;
-else if(!cur)$('#act').innerHTML=V.w&&V.w!==me.n?`ელოდება: ${V.w}…`:''}
+else if(!cur)$('#act').innerHTML=V.w&&V.w!==me.n?`⏳ ველოდებით მოთამაშეს: ${V.w}`:''}
 function choose(q,opts,count=1){return new Promise(res=>{const box=$('#act');let sel=[];
 const draw=()=>{box.innerHTML=`<p>${q}</p><div class="btns">`+opts.map((o,i)=>`<button data-i="${i}" class="${sel.includes(i)?'on':''}${/🤥/.test(o.l)?' bad':''}" ${o.off?'disabled':''}>${o.l}</button>`).join('')+(count>1?`<button id="ok" ${sel.length==count?'':'disabled'}>დადასტურება</button>`:'')+'</div>';
 box.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(count==1){box.innerHTML='';res([opts[i].v]);return}
