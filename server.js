@@ -1,15 +1,16 @@
-// ბლეFი — ონლაინ სერვერი. თამაშის წესებს სერვერი ამოწმებს, ბრაუზერები მხოლოდ აჩვენებენ.
+// BLUFF / ბლეFი — online server. The server owns the rules; browsers only render.
+// All game text is sent as language-neutral data (keys + player indexes); the client translates it.
 const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT || 3000;
-const SL = process.env.FAST ? 0.005 : 1;
+const SL = process.env.FAST ? 0.005 : 1; // FAST=1 shortens pauses (tests only)
 
 const server = http.createServer((q, r) => {
   if (q.url === '/healthz') return r.end('ok');
-  r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
   r.end(fs.readFileSync(path.join(__dirname, 'public', 'index.html')));
 });
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, maxPayload: 4096 });
 const rooms = new Map();
 
 const esc = s => String(s).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
@@ -17,27 +18,13 @@ const shuf = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.rand
 const sleep = ms => new Promise(r => setTimeout(r, ms * SL));
 const send = (ws, o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
 const randAns = (o, c) => shuf(o.map((x, i) => x.off ? -1 : i).filter(i => i >= 0)).slice(0, c);
+const ROLES = ['D', 'A', 'C', 'M', 'G'];
 
-const R = { D: { n: 'დიქტატორი', e: '👑', is: 'დიქტატორია' }, A: { n: 'ასასინი', e: '🗡️', is: 'ასასინია' }, C: { n: 'ქურდი', e: '💰', is: 'ქურდია' }, M: { n: 'მაგიკოსი', e: '🎩', is: 'მაგიკოსია' }, G: { n: 'მაფია', e: '🕶️', is: 'მაფიაა' } };
-const who = (t, q) => t === q ? 'შენ' : t.n;
-const desc = (a, t, q) => ({ tax: 'აიღებს 3 მონეტას', kill: `მოკლავს კარტს. სამიზნე: ${t && who(t, q)}`, steal: `მოიპარავს 2 მონეტას. სამიზნე: ${t && who(t, q)}`, exch: 'გაცვლის კარტებს' })[a];
-const actLog = (p, a, t) => ({
-  income: `${p.n} იღებს 1 მონეტას.`,
-  aid: `${p.n} იღებს დახმარებას: +2 მონეტა.`,
-  coup: `${p.n} აკეთებს გადატრიალებას. სამიზნე: ${t && t.n}.`,
-  tax: `${p.n} ამბობს, რომ დიქტატორია, და იღებს 3 მონეტას.`,
-  kill: `${p.n} ამბობს, რომ ასასინია. სამიზნე: ${t && t.n}.`,
-  steal: `${p.n} ამბობს, რომ ქურდია. სამიზნე: ${t && t.n}.`,
-  exch: `${p.n} ამბობს, რომ მაგიკოსია და ცვლის კარტებს.`
-})[a];
-const blockQ = (actor, act) => ({ aid: `${actor.n} იღებს დახმარებას (+2 მონეტა). გინდა დაბლოკო?`, kill: `${actor.n} გიპირებს შენი კარტის მოკვლას. გინდა დაბლოკო?`, steal: `${actor.n} გიპირებს შენი 2 მონეტის მოპარვას. გინდა დაბლოკო?` })[act];
-const ACT = { income: 'იღებს მონეტას', aid: 'დახმარება (+2)', coup: 'გადატრიალება', tax: 'დიქტატორი (+3)', kill: 'მკვლელობა', steal: 'ქურდობა', exch: 'გაცვლა' };
-const NAMES = ['ნიკა', 'ანა', 'გიო', 'მარიამი', 'დათო'];
-
-// ---------- ოთახები ----------
+// ---------- rooms ----------
 function lob(rm) {
+  rm.nb = Math.max(0, Math.min(rm.nb, 6 - rm.pl.length));
   const players = rm.pl.map(x => ({ n: x.nick, h: x.host, on: !!x.ws }));
-  rm.pl.forEach(c => send(c.ws, { t: 'lobby', code: rm.code, players, host: c.host }));
+  rm.pl.forEach((c, i) => send(c.ws, { t: 'lobby', code: rm.code, players, nb: rm.nb, host: c.host, me: i }));
 }
 
 function join(ws, m) {
@@ -46,21 +33,32 @@ function join(ws, m) {
   if (!code || !tok) return;
   let rm = rooms.get(code);
   if (!rm) {
-    if (!m.create) return send(ws, { t: 'err', m: 'ოთახი ვერ მოიძებნა. შეამოწმე კოდი.' });
-    rm = { code, pl: [], g: null };
+    if (!m.create) return send(ws, { t: 'err', k: 'nf' });
+    rm = { code, pl: [], g: null, nb: 1 };
     rooms.set(code, rm);
   }
   let c = rm.pl.find(x => x.tok === tok);
+  if (c && c.left) return send(ws, { t: 'err', k: 'started' });
   if (!c) {
-    if (rm.g) return send(ws, { t: 'err', m: 'თამაში უკვე დაიწყო.' });
-    if (rm.pl.length >= 6) return send(ws, { t: 'err', m: 'ოთახი სავსეა (მაქსიმუმ 6).' });
+    if (rm.g) return send(ws, { t: 'err', k: 'started' });
+    if (rm.pl.length >= 6) return send(ws, { t: 'err', k: 'full' });
     c = { tok, host: !rm.pl.length };
     rm.pl.push(c);
   }
-  c.nick = esc(String(m.nick || '').trim().slice(0, 12) || 'მოთამაშე');
+  c.nick = esc(String(m.nick || '').trim().slice(0, 12) || '•');
   if (c.ws && c.ws !== ws) c.ws.close();
   c.ws = ws; ws.rm = rm; rm.last = Date.now();
   if (rm.g) { rm.g.push(1); rm.g.resend(tok); } else lob(rm);
+}
+
+function leave(ws, rm, c) {
+  ws.rm = null; c.ws = null;
+  if (!rm.g) {
+    rm.pl = rm.pl.filter(x => x !== c);
+    if (!rm.pl.length) return rooms.delete(rm.code);
+    if (c.host) rm.pl[0].host = true;
+    lob(rm);
+  } else { c.left = true; rm.g.leave(c.tok); }
 }
 
 wss.on('connection', ws => {
@@ -68,56 +66,70 @@ wss.on('connection', ws => {
   ws.on('pong', () => ws.alive = true);
   ws.on('message', raw => {
     let m; try { m = JSON.parse(raw); } catch { return; }
+    if (!m || typeof m !== 'object') return;
     if (m.t === 'join') return join(ws, m);
     const rm = ws.rm; if (!rm) return;
     rm.last = Date.now();
     const c = rm.pl.find(x => x.ws === ws);
     if (!c) return;
-    if (m.t === 'start') {
-      if (!c.host || rm.g) return;
-      const nb = Math.max(0, Math.min(6 - rm.pl.length, +m.nb | 0)), tot = rm.pl.length + nb;
-      if (tot < 2 || tot > 6) return send(ws, { t: 'err2', m: 'მოთამაშეები უნდა იყოს 2–6' });
-      rm.g = runGame(rm, nb);
+    if (m.t === 'leave') return leave(ws, rm, c);
+    if (m.t === 'bots' && c.host && !rm.g) { rm.nb = Math.max(0, Math.min(6 - rm.pl.length, +m.n | 0)); return lob(rm); }
+    if (m.t === 'start' && c.host && !rm.g) {
+      const tot = rm.pl.length + rm.nb;
+      if (tot < 2 || tot > 6) return send(ws, { t: 'err2', k: 'count' });
+      rm.g = runGame(rm, rm.nb);
     }
+    if (m.t === 'again' && c.host && rm.g && rm.g.isOver()) { rm.pl = rm.pl.filter(x => !x.left); rm.g = null; lob(rm); }
+    if (m.t === 'emote' && rm.g) rm.g.emote(c.tok, m.e | 0);
     if (m.t === 'ans' && rm.g) rm.g.answer(c.tok, m);
   });
-  ws.on('close', () => { const rm = ws.rm; if (!rm) return; const c = rm.pl.find(x => x.ws === ws); if (c) { c.ws = null; if (!rm.g) lob(rm); else rm.g.push(); } });
+  ws.on('close', () => {
+    const rm = ws.rm; if (!rm) return;
+    const c = rm.pl.find(x => x.ws === ws);
+    if (c) { c.ws = null; if (!rm.g) lob(rm); else rm.g.push(); }
+  });
 });
 setInterval(() => {
   wss.clients.forEach(w => { if (!w.alive) return w.terminate(); w.alive = false; w.ping(); });
   for (const [k, rm] of rooms) if (Date.now() - (rm.last || 0) > 6 * 3600e3 && !rm.pl.some(x => x.ws)) rooms.delete(k);
 }, 25000);
 
-// ---------- თამაში ----------
+// ---------- game ----------
 function runGame(rm, nb) {
   const g = { pend: {}, qid: 0 };
-  let evt = null, evn = 0;
-  let deck = shuf(Object.keys(R).flatMap(r => [r, r, r])), turn = 0, log = [], over = '', waiting = '', bt;
-  const P = shuf([...rm.pl.map(c => ({ n: c.nick, h: 1, tok: c.tok })), ...Array.from({ length: nb }, (_, i) => ({ n: NAMES[i] }))]);
+  let evt = null, evn = 0, turn = 0, log = [], over = null, waiting = -1, bt;
+  const deck = shuf(ROLES.flatMap(r => [r, r, r]));
+  const P = shuf([...rm.pl.map(c => ({ n: c.nick, h: 1, tok: c.tok })), ...Array.from({ length: nb }, (_, i) => ({ b: i }))]);
   P.forEach(p => { p.coins = 2; p.cards = [{ r: deck.pop() }, { r: deck.pop() }]; });
+  const ix = p => P.indexOf(p);
   const ev = o => { evt = { id: ++evn, ...o }; g.push(1); };
   const live = p => p.cards.filter(c => !c.d);
   const others = p => { const r = []; for (let i = 1; i < P.length; i++) { const q = P[(P.indexOf(p) + i) % P.length]; if (live(q).length) r.push(q); } return r; };
   const conn = tok => (rm.pl.find(x => x.tok === tok) || {}).ws;
 
   const view = i => ({
-    t: 'st', me: i, tn: turn, w: waiting, o: over, l: log.slice(0, 8), ev: evt, a: (Object.values(g.pend).find(e => e.p === P[i]) || { m: { id: 0 } }).m.id,
-    p: P.map((p, j) => ({ n: p.n, c: p.coins, k: p.cards.map(c => c.d || j === i ? [c.r, c.d ? 1 : 0] : 0) }))
+    t: 'st', me: i, tn: turn, host: !!(rm.pl.find(x => x.tok === P[i].tok) || {}).host, w: waiting, o: over === null ? -1 : over, l: log.slice(0, 10), ev: evt,
+    a: (Object.values(g.pend).find(e => e.p === P[i]) || { m: { id: 0 } }).m.id,
+    p: P.map((p, j) => ({
+      n: p.b == null ? p.n : null, b: p.b == null ? null : p.b, c: p.coins, on: p.tok ? (!p.gone && !!conn(p.tok)) : true,
+      k: p.cards.map(c => c.d || j === i ? [c.r, c.d ? 1 : 0] : 0)
+    }))
   });
   g.push = now => {
     clearTimeout(bt);
     bt = setTimeout(() => P.forEach((p, i) => p.tok && send(conn(p.tok), view(i))), now ? 0 : 80);
   };
-  const say = t => { log.unshift(t); g.push(); };
+  g.isOver = () => over !== null;
+  const say = e => { log.unshift(e); g.push(); };
 
   function ask(p, q, opts, count = 1, tl = 0, def = null) {
     return new Promise(res => {
-      const id = ++g.qid; waiting = p.n;
+      const id = ++g.qid; waiting = ix(p);
       const m = { t: 'ask', id, q, o: opts.map(o => o.l), off: opts.map(o => o.off ? 1 : 0), c: count };
       const e = { p, m, opts, count, tl, at: Date.now() };
-      e.res = a => { clearTimeout(e.timer); delete g.pend[id]; waiting = ''; res(a.map(i => opts[i].v)); g.push(); };
+      e.res = a => { clearTimeout(e.timer); delete g.pend[id]; waiting = -1; res(a.map(i => opts[i].v)); g.push(); };
       e.timer = tl ? setTimeout(() => e.res(def || randAns(opts, count)), tl * 1000)
-        : setTimeout(() => { p.h = 0; say(`${p.n} დიდხანს არ პასუხობს, ამიტომ მის ნაცვლად ბოტი თამაშობს.`); e.res(randAns(opts, count)); }, 60000);
+        : setTimeout(() => { p.h = 0; say({ k: 'afk', n: ix(p) }); e.res(randAns(opts, count)); }, 60000);
       g.pend[id] = e; sendAsk(e); g.push();
     });
   }
@@ -129,28 +141,40 @@ function runGame(rm, nb) {
     if (a.length !== e.count || !a.every(i => e.opts[i] && !e.opts[i].off)) return;
     e.res(a);
   };
+  g.leave = tok => {
+    const p = P.find(x => x.tok === tok); if (!p) return;
+    p.h = 0; p.gone = 1;
+    Object.values(g.pend).filter(e => e.p === p).forEach(e => e.res(randAns(e.opts, e.count)));
+    g.push();
+  };
+  g.emote = (tok, e) => {
+    const i = P.findIndex(x => x.tok === tok), p = P[i];
+    if (!p || e < 0 || e > 3 || Date.now() - (p.emo || 0) < 1200) return;
+    p.emo = Date.now();
+    P.forEach(x => x.tok && send(conn(x.tok), { t: 'emo', p: i, e }));
+  };
 
   async function lose(p, why) {
     const l = live(p); if (!l.length) return;
     let c;
-    if (p.h && l.length > 1) c = (await ask(p, `${why} აირჩიე კარტი, რომელსაც დაკარგავ:`, l.map(x => ({ l: R[x.r].e + ' ' + R[x.r].n, v: x })), 1, 30))[0];
+    if (p.h && l.length > 1) c = (await ask(p, { k: 'q_lose', w: why }, l.map(x => ({ l: { k: 'role', r: x.r }, v: x })), 1, 30))[0];
     else c = l[Math.random() * l.length | 0];
-    c.d = 1; say(`${p.n} კარგავს: ${R[c.r].e} ${R[c.r].n}`);
-    if (!live(p).length) say(`☠️ ${p.n} თამაშიდან გავიდა.`);
+    c.d = 1; say({ k: 'lose', n: ix(p), r: c.r });
+    if (!live(p).length) say({ k: 'out', n: ix(p) });
   }
   const swap = c => { deck.push(c.r); shuf(deck); c.r = deck.pop(); };
 
-  async function challengeRound(actor, role, what) {
+  async function challengeRound(actor, role, a, t) {
     for (const q of others(actor)) {
       if (!live(q).length) continue;
       let ch;
-      if (q.h) ch = (await ask(q, `${actor.n} ამბობს, რომ ${R[role].is} (${what(q)}). გჯერა?`, [{ l: '🤥 არ მჯერა, ვამოწმებ!', v: 1 }, { l: '👍 მჯერა, გაუშვი', v: 0 }], 1, 15, [1]))[0];
+      if (q.h) ch = (await ask(q, { k: 'q_call', n: ix(actor), r: role, a, t: t ? ix(t) : -1 }, [{ l: { k: 'c_yes' }, v: 1 }, { l: { k: 'c_no' }, v: 0 }], 1, 15, [1]))[0];
       else { await sleep(500); ch = Math.random() < .12; }
       if (ch) {
-        say(`${q.n} ამბობს: „არ მჯერა!“`);
+        say({ k: 'call', n: ix(q) });
         const c = live(actor).find(x => x.r === role);
-        if (c) { say(`${actor.n} აჩვენებს კარტს ${R[role].e} ${R[role].n} — მართლა ჰქონდა!`); ev({ k: 'reveal', ok: 1, r: role, n: actor.n }); await sleep(2600); swap(c); await lose(q, 'შენ დააეჭვე მოწინააღმდეგე, მაგრამ ის მართალი იყო.'); return true; }
-        say(`${actor.n} იცრუა — ეს კარტი არ ჰქონდა!`); ev({ k: 'reveal', ok: 0, r: role, n: actor.n }); await sleep(2600); await lose(actor, 'ტყუილში გამოგიჭირეს.'); return false;
+        if (c) { say({ k: 'shown', n: ix(actor), r: role }); ev({ k: 'reveal', ok: 1, r: role, n: ix(actor) }); await sleep(2600); swap(c); await lose(q, 'badcall'); return true; }
+        say({ k: 'bluffed', n: ix(actor) }); ev({ k: 'reveal', ok: 0, r: role, n: ix(actor) }); await sleep(2600); await lose(actor, 'caught'); return false;
       }
     }
     return true;
@@ -162,18 +186,18 @@ function runGame(rm, nb) {
     for (const q of cands) {
       if (!live(q).length) continue;
       let br = null;
-      if (q.h) br = (await ask(q, blockQ(actor, act), [...roles.map(r => ({ l: `🛡️ დავბლოკავ: ${R[r].e} ${R[r].n}`, v: r })), { l: 'არ ვბლოკავ', v: 0 }], 1, 15, [roles.length]))[0] || null;
+      if (q.h) br = (await ask(q, { k: 'q_block', n: ix(actor), a: act }, [...roles.map(r => ({ l: { k: 'b_do', r }, v: r })), { l: { k: 'b_no' }, v: 0 }], 1, 15, [roles.length]))[0] || null;
       else { const own = roles.find(r => live(q).some(c => c.r === r)); if (own && Math.random() < .7) br = own; else if (Math.random() < .08) br = roles[0]; }
       if (!br) continue;
-      say(`${q.n} ბლოკავს და ამბობს, რომ ${R[br].is}.`); ev({ k: 'claim', r: br });
+      say({ k: 'block', n: ix(q), r: br }); ev({ k: 'claim', r: br });
       let ch;
-      if (actor.h) ch = (await ask(actor, `${q.n} ამბობს, რომ ${R[br].is}, და ბლოკავს შენს სვლას. გჯერა?`, [{ l: '🤥 არ მჯერა, ვამოწმებ!', v: 1 }, { l: '👍 მჯერა', v: 0 }], 1, 15, [1]))[0];
+      if (actor.h) ch = (await ask(actor, { k: 'q_counter', n: ix(q), r: br }, [{ l: { k: 'c_yes' }, v: 1 }, { l: { k: 'c_no' }, v: 0 }], 1, 15, [1]))[0];
       else ch = Math.random() < .2;
       if (!ch) return true;
-      say(`${actor.n} ამბობს: „არ მჯერა!“`);
+      say({ k: 'call', n: ix(actor) });
       const c = live(q).find(x => x.r === br);
-      if (c) { say(`${q.n} აჩვენებს კარტს ${R[br].e} ${R[br].n} — მართლა ჰქონდა!`); ev({ k: 'reveal', ok: 1, r: br, n: q.n }); await sleep(2600); swap(c); await lose(actor, 'შენ დააეჭვე მოწინააღმდეგე, მაგრამ ის მართალი იყო.'); return true; }
-      say(`${q.n} იცრუა — ეს კარტი არ ჰქონდა!`); ev({ k: 'reveal', ok: 0, r: br, n: q.n }); await sleep(2600); await lose(q, 'ტყუილში გამოგიჭირეს.');
+      if (c) { say({ k: 'shown', n: ix(q), r: br }); ev({ k: 'reveal', ok: 1, r: br, n: ix(q) }); await sleep(2600); swap(c); await lose(actor, 'badcall'); return true; }
+      say({ k: 'bluffed', n: ix(q) }); ev({ k: 'reveal', ok: 0, r: br, n: ix(q) }); await sleep(2600); await lose(q, 'caught');
     }
     return false;
   }
@@ -190,27 +214,29 @@ function runGame(rm, nb) {
 
   async function humanAct(p) {
     const f = p.coins >= 10;
-    const opts = [{ l: '🪙 აიღე 1 მონეტა', v: 'income', off: f }, { l: '💵 დახმარება: +2 მონეტა', v: 'aid', off: f }, { l: '💥 გადატრიალება (7 მონეტა)', v: 'coup', off: p.coins < 7 }, { l: '👑 დიქტატორი: +3 მონეტა', v: 'tax', off: f }, { l: '🗡️ ასასინი: მკვლელობა (3 მონეტა)', v: 'kill', off: f || p.coins < 3 }, { l: '💰 ქურდი: 2 მონეტის მოპარვა', v: 'steal', off: f }, { l: '🎩 მაგიკოსი: კარტების გაცვლა', v: 'exch', off: f }];
-    const a = (await ask(p, 'შენი სვლაა. აირჩიე მოქმედება:', opts))[0]; let t;
-    if (['coup', 'kill', 'steal'].includes(a)) t = (await ask(p, 'აირჩიე სამიზნე:', others(p).map(x => ({ l: `${x.n} — ${x.coins} მონეტა`, v: x, off: a === 'steal' && !x.coins }))))[0];
+    const opts = [
+      { l: { k: 'a_income' }, v: 'income', off: f }, { l: { k: 'a_aid' }, v: 'aid', off: f }, { l: { k: 'a_coup' }, v: 'coup', off: p.coins < 7 },
+      { l: { k: 'a_tax' }, v: 'tax', off: f }, { l: { k: 'a_kill' }, v: 'kill', off: f || p.coins < 3 }, { l: { k: 'a_steal' }, v: 'steal', off: f }, { l: { k: 'a_exch' }, v: 'exch', off: f }];
+    const a = (await ask(p, { k: 'q_act' }, opts))[0]; let t;
+    if (['coup', 'kill', 'steal'].includes(a)) t = (await ask(p, { k: 'q_target' }, others(p).map(x => ({ l: { k: 'target', n: ix(x), c: x.coins }, v: x, off: a === 'steal' && !x.coins }))))[0];
     return { a, t };
   }
 
   async function play(p) {
     const { a, t } = p.h ? await humanAct(p) : botAct(p);
-    say(actLog(p, a, t));
-    if (a === 'coup') { p.coins -= 7; await lose(t, 'შენზე გადატრიალება გააკეთეს.'); return; }
+    say({ k: a, n: ix(p), t: t ? ix(t) : -1 });
+    if (a === 'coup') { p.coins -= 7; await lose(t, 'coup'); return; }
     if (a === 'kill') p.coins -= 3;
     const role = { tax: 'D', kill: 'A', steal: 'C', exch: 'M' }[a];
     ev({ k: 'claim', r: role || null });
-    if (role && !(await challengeRound(p, role, q => desc(a, t, q)))) { if (a === 'kill') p.coins += 3; return; }
+    if (role && !(await challengeRound(p, role, a, t))) { if (a === 'kill') p.coins += 3; return; }
     if (['aid', 'kill', 'steal'].includes(a) && await blockRound(p, a, t)) return;
     if (a === 'income') p.coins++; if (a === 'aid') p.coins += 2; if (a === 'tax') p.coins += 3;
-    if (a === 'kill' && live(t).length) await lose(t, 'ასასინმა შენს კარტს დაარტყა.');
+    if (a === 'kill' && live(t).length) await lose(t, 'kill');
     if (a === 'steal') { const n = Math.min(2, t.coins); t.coins -= n; p.coins += n; }
     if (a === 'exch') {
       const k = live(p).length, pool = [...live(p).map(c => c.r), deck.pop(), deck.pop()]; let keep;
-      if (p.h) keep = await ask(p, `მაგიკოსი: აირჩიე ${k} კარტი, რომელიც შეინარჩუნებ (დანარჩენი დასტაში დაბრუნდება):`, pool.map((r, i) => ({ l: R[r].e + ' ' + R[r].n, v: i })), k, 40, [...Array(k).keys()]);
+      if (p.h) keep = await ask(p, { k: 'q_exch', c: k }, pool.map((r, i) => ({ l: { k: 'role', r }, v: i })), k, 40, [...Array(k).keys()]);
       else keep = shuf([...pool.keys()]).slice(0, k);
       live(p).forEach((c, i) => c.r = pool[keep[i]]);
       pool.forEach((r, i) => { if (!keep.includes(i)) deck.push(r); }); shuf(deck);
@@ -218,18 +244,18 @@ function runGame(rm, nb) {
   }
 
   (async () => {
-    say('თამაში დაიწყო! სვლა საათის ისრის მიმართულებით გადადის.');
+    say({ k: 'start' });
     try {
       while (P.filter(x => live(x).length).length > 1) {
         const p = P[turn];
         if (live(p).length) { g.push(); await play(p); g.push(); await sleep(p.h ? 300 : 900); }
         turn = (turn + 1) % P.length;
       }
-      over = P.find(x => live(x).length).n;
-    } catch (e) { console.error(e); over = 'შეცდომა — თავიდან დაიწყეთ'; }
+      over = ix(P.find(x => live(x).length));
+    } catch (e) { console.error(e); over = -2; }
     g.push(1);
   })();
   return g;
 }
 
-server.listen(PORT, () => console.log('ბლეFი გაშვებულია: http://localhost:' + PORT));
+server.listen(PORT, () => console.log('BLUFF server running: http://localhost:' + PORT));
